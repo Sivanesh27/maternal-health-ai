@@ -15,6 +15,7 @@ apiKey = ""
 def get_api_key():
     try:
         if st.secrets and "GEMINI_API_KEY" in st.secrets:
+            # strip() is crucial to remove accidental spaces from copy-pasting
             return str(st.secrets["GEMINI_API_KEY"]).strip()
     except:
         pass
@@ -26,26 +27,26 @@ def local_clinical_brain(hb, bp, risk_score, lang, diagnostic_msg=""):
         advice = f"மருத்துவ ஆய்வு: அபாய மதிப்பெண் {risk_score}%. "
         if hb < 11: advice += "ஹீமோகுளோபின் குறைவாக உள்ளது. இரும்புச்சத்து உணவுகளை உட்கொள்ளுங்கள். "
         if bp > 140: advice += "இரத்த அழுத்தம் அதிகம். ஓய்வெடுக்கவும்."
-        footer = f"\n\n(குறிப்பு: இணைப்பு சிக்கல். பிழை: {diagnostic_msg})" if diagnostic_msg else "\n\n(குறிப்பு: இது ஒரு தானியங்கி மருத்துவ உதவி.)"
+        footer = f"\n\n(குறிப்பு: இணைப்பு சிக்கல். பிழை விவரம்: {diagnostic_msg})" if diagnostic_msg else "\n\n(குறிப்பு: இது ஒரு தானியங்கி மருத்துவ உதவி.)"
         return advice + footer
     elif lang == "हिन्दी":
         advice = f"नैदानिक विश्लेषण: जोखिम स्कोर {risk_score}% है। "
         if hb < 11: advice += "हीमोग्लोबिन कम है। आयरन युक्त भोजन लें। "
         if bp > 140: advice += "रक्तचाप अधिक है। आराम करें।"
-        footer = f"\n\n(त्रुटि: {diagnostic_msg})" if diagnostic_msg else "\n\n(नोट: यह एक स्वचालित सहायता है।)"
+        footer = f"\n\n(त्रुटि विवरण: {diagnostic_msg})" if diagnostic_msg else "\n\n(नोट: यह एक स्वचालित सहायता है।)"
         return advice + footer
     else:
         advice = f"Clinical Assessment: Predictive risk is {risk_score}%. "
         if hb < 11: advice += "Action: Increase Iron intake. "
         if bp > 140: advice += "Action: Monitor BP daily and reduce salt. "
-        footer = f"\n\n(Diagnostic: {diagnostic_msg})" if diagnostic_msg else "\n\n(Note: Rule-based fallback due to API timeout.)"
+        footer = f"\n\n(Diagnostic Details: {diagnostic_msg})" if diagnostic_msg else "\n\n(Note: Rule-based fallback due to API timeout.)"
         return advice + footer
 
 # --- 2. AI CORE LOGIC ---
 def call_gemini_ai(prompt, context_type="general", language="English"):
     """
-    Exhaustive Handshake Engine with Diagnostic reporting.
-    Cycles through endpoints to bypass 404/400 errors.
+    Exhaustive Discovery Engine: Cycles through every possible authorized model path.
+    Prioritizes Stable v1 to solve 404 errors.
     """
     current_key = get_api_key()
     patient_ctx = st.session_state.get('patient_data', {})
@@ -54,15 +55,16 @@ def call_gemini_ai(prompt, context_type="general", language="English"):
     score = st.session_state.get('risk_score', 0)
 
     if not current_key or len(current_key) < 10:
-        return local_clinical_brain(hb, bp, score, language, "API Key Missing or Invalid")
+        return local_clinical_brain(hb, bp, score, language, "API Key Missing or Invalid in Secrets")
 
-    # Priority list for Cloud Console Projects
+    # Revised priority list to bypass common 404 aliases
     discovery_paths = [
-        ("v1", "gemini-1.5-flash"),
-        ("v1beta", "gemini-1.5-flash"),
-        ("v1", "gemini-1.5-pro"),
-        ("v1", "gemini-1.0-pro"),
-        ("v1beta", "gemini-1.5-flash-latest")
+        ("v1", "gemini-1.5-flash"),        # Standard Stable
+        ("v1", "gemini-1.5-pro"),          # Pro Stable
+        ("v1beta", "gemini-1.5-flash"),    # Beta Flash
+        ("v1", "gemini-pro"),              # Legacy Alias
+        ("v1beta", "gemini-pro"),          # Legacy Beta
+        ("v1", "gemini-1.5-flash-8b"),     # Lightweight variant
     ]
     
     prompts = {
@@ -77,28 +79,29 @@ def call_gemini_ai(prompt, context_type="general", language="English"):
                   f"LANGUAGE: Respond ONLY in {language}.\n"
                   f"CONTEXT: {patient_ctx}\n"
                   f"QUERY: {prompt}\n\n"
-                  f"Constraint: Provide a professional response in {language} only.")
+                  f"Constraint: Respond clearly in {language}.")
 
     payload = {"contents": [{"role": "user", "parts": [{"text": full_query}]}]}
     headers = {"Content-Type": "application/json"}
     
-    last_error_details = ""
+    error_log = []
     
     for version, model_name in discovery_paths:
         url = f"https://generativelanguage.googleapis.com/{version}/models/{model_name}:generateContent?key={current_key}"
         try:
-            response = requests.post(url, json=payload, headers=headers, timeout=10)
+            response = requests.post(url, json=payload, headers=headers, timeout=12)
             if response.status_code == 200:
                 data = response.json()
                 return data['candidates'][0]['content']['parts'][0]['text']
             else:
-                last_error_details = f"HTTP {response.status_code}: {response.text[:100]}"
+                error_log.append(f"{model_name}({version}): {response.status_code}")
         except Exception as e:
-            last_error_details = str(e)
+            error_log.append(f"{model_name}: Timeout/Error")
         time.sleep(0.1) 
 
-    # If all fail, provide the last error message for the user to debug in Console
-    return local_clinical_brain(hb, bp, score, language, last_error_details)
+    # Combine errors for diagnostic visibility
+    diagnostic_msg = " | ".join(error_log)
+    return local_clinical_brain(hb, bp, score, language, diagnostic_msg)
 
 # --- 3. PDF GENERATION ---
 class PDFReport(FPDF):
@@ -118,12 +121,12 @@ def create_pdf(data, ai_note):
     pdf.multi_cell(0, 10, vitals)
     pdf.ln(5)
     pdf.set_font("Arial", 'B', 12)
-    pdf.cell(0, 10, "Clinical AI Analysis:", 0, 1)
+    pdf.cell(0, 10, "AI Clinical Assessment:", 0, 1)
     pdf.set_font("Arial", '', 10)
     try:
         clean_ai = ai_note.encode('ascii', 'ignore').decode('ascii')
     except:
-        clean_ai = "Assessment complete. See application dashboard for details."
+        clean_ai = "Assessment complete. Full report available in the app dashboard."
     pdf.multi_cell(0, 6, clean_ai)
     return pdf.output(dest='S').encode('latin-1')
 
@@ -174,7 +177,7 @@ if 'risk_score' not in st.session_state: st.session_state.risk_score = None
 
 with st.sidebar:
     st.markdown('<div style="display:flex; justify-content:center; margin:30px 0;"><div class="logo-m">M</div></div>', unsafe_allow_html=True)
-    lang = st.selectbox("🌐 Language", ["English", "தமிழ்", "हिन्दी"])
+    lang = st.selectbox("🌐 Language / மொழி / भाषा", ["English", "தமிழ்", "हिन्दी"])
     nav_options = {
         "English": ["Assessment", "Weekly AI Tips", "Medication Log", "Music", "AI Chat"],
         "தமிழ்": ["மதிப்பீடு", "வாராந்திர குறிப்புகள்", "மருந்துப் பதிவு", "இசை", "AI மருத்துவர்"],
@@ -235,14 +238,14 @@ if nav_idx == 0: # Assessment
             st.session_state.patient_data = {"name": name, "age": age, "hb": hb, "bp": bp, "weight": weight, "week": week}
             st.session_state.risk_score = 15.0 if hb >= 11 and bp <= 140 else 68.0
             st.session_state.ai_assessment = "" 
-            st.success("Vitals Synchronized.")
+            st.success("Synchronized.")
     with col2:
         st.markdown(f'<div class="main-card"><h3>{c["res"]}</h3>', unsafe_allow_html=True)
         if st.session_state.risk_score:
             st.metric("Risk Score", f"{st.session_state.risk_score}%")
             if st.button(c["btn_ai"], use_container_width=True):
-                with st.spinner("AI checking connection paths..."):
-                    res = call_gemini_ai(f"Evaluate clinical risk for {st.session_state.patient_data}", "clinical", lang)
+                with st.spinner("Exhausting all connection paths..."):
+                    res = call_gemini_ai(f"Risk {st.session_state.risk_score}% vitals {st.session_state.patient_data}", "clinical", lang)
                     st.session_state.ai_assessment = res
             if st.session_state.ai_assessment:
                 st.markdown(f"**AI Results:**\n{st.session_state.ai_assessment}")
@@ -263,8 +266,8 @@ elif nav_idx == 1: # Weekly AI Tips
 elif nav_idx == 2: # Medication Log
     st.title(c["med_title"])
     st.markdown(f'<div class="main-card"><h3>{c["med_add"]}</h3>', unsafe_allow_html=True)
-    m_name = st.text_input("Medicine")
-    m_time = st.time_input("Time")
+    m_name = st.text_input("Medicine / மருந்து / दवा")
+    m_time = st.time_input("Dosage Time")
     if st.button(c["med_btn"], use_container_width=True):
         st.session_state.medicines.append({"name": m_name, "time": str(m_time)})
     for m in st.session_state.medicines: st.markdown(f"🔔 **{m['name']}** at {m['time']}")
@@ -282,7 +285,8 @@ elif nav_idx == 4: # AI Doctor Chat
     st.markdown('<div class="main-card">', unsafe_allow_html=True)
     user_q = st.text_input(c["chat_btn"])
     if st.button(c["chat_btn"], use_container_width=True):
-        st.markdown(f"**AI Doctor:** {call_gemini_ai(user_q, 'chatbot', lang)}")
+        with st.spinner("Assistant is replying..."):
+            st.markdown(f"**AI Doctor:** {call_gemini_ai(user_q, 'chatbot', lang)}")
 
 st.write("---")
-st.caption("MaternalAI Support v3.0 | Total Handshake Mode | Diagnostic Enabled")
+st.caption("MaternalAI Support v3.0 | Total Handshake Mode | Diagnostic Discovery")
