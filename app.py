@@ -21,10 +21,10 @@ def get_api_key():
     return apiKey.strip()
 
 def local_clinical_brain(hb, bp, risk_score, lang):
-    """Deep clinical rule-based fallback if Gemini API is unreachable."""
+    """Deep clinical rule-based fallback used if ALL Gemini versions are unreachable."""
     if lang == "தமிழ்":
         advice = f"மருத்துவ ஆய்வு: உங்கள் அபாய மதிப்பெண் {risk_score}%. "
-        if hb < 11: advice += "ஹீமோகுளோபின் குறைவாக உள்ளது (இரத்த சோகை). இரும்புச்சத்து நிறைந்த உணவுகளை உட்கொள்ளுங்கள். "
+        if hb < 11: advice += "ஹீமோகுளோபின் குறைவாக உள்ளது. இரும்புச்சத்து நிறைந்த உணவுகளை உட்கொள்ளுங்கள். "
         if bp > 140: advice += "இரத்த அழுத்தம் அதிகமாக உள்ளது. தயவுசெய்து ஓய்வெடுக்கவும்."
         return advice + "\n\n(குறிப்பு: இணைப்பு சிக்கல் காரணமாக இது தானியங்கி மருத்துவ உதவி.)"
     elif lang == "हिन्दी":
@@ -41,8 +41,8 @@ def local_clinical_brain(hb, bp, risk_score, lang):
 
 def call_gemini_ai(prompt, context_type="general", language="English"):
     """
-    Consolidated Handshake Engine: Prioritizes the v1 stable endpoint you found.
-    Ensures full personalization and language support across all menu options.
+    Exhaustive Discovery Engine: Cycles through EVERY known Gemini version 
+    (from v1.0 to v1.5 Pro/Flash) across all endpoints to bypass 404/400 errors.
     """
     current_key = get_api_key()
     patient_ctx = st.session_state.get('patient_data', {})
@@ -53,48 +53,50 @@ def call_gemini_ai(prompt, context_type="general", language="English"):
     if not current_key or len(current_key) < 10:
         return local_clinical_brain(hb, bp, score, language)
 
-    # Prioritizing the Stable v1 path for gemini-1.5-flash
+    # Exhaustive list of model identifiers from 1.0 to 1.5
     discovery_paths = [
         ("v1", "gemini-1.5-flash"),
         ("v1beta", "gemini-1.5-flash"),
         ("v1", "gemini-1.5-flash-latest"),
-        ("v1beta", "gemini-1.5-pro")
+        ("v1beta", "gemini-1.5-flash-latest"),
+        ("v1", "gemini-1.5-pro"),
+        ("v1beta", "gemini-1.5-pro"),
+        ("v1", "gemini-1.0-pro"),
+        ("v1beta", "gemini-1.0-pro"),
+        ("v1", "gemini-pro"),
+        ("v1beta", "gemini-pro")
     ]
     
     prompts = {
-        "clinical": "Senior Maternal Health Consultant. Provide a professional clinical risk assessment and medical roadmap.",
+        "clinical": "Senior Maternal Health Doctor. Provide a professional clinical risk assessment and medical roadmap.",
         "tips": "Provide 3 unique, medical-backed pregnancy tips for this specific week and vitals.",
         "music": "Recommend 3 specific relaxation soundscapes or meditation styles for this pregnancy stage.",
         "chatbot": "Friendly maternal health assistant. Answer queries with clinical empathy and clarity."
     }
     
     instr = prompts.get(context_type, "Maternal health assistant.")
-    # Consolidating instructions into a single user message for maximum API compatibility
-    full_query = (f"System Role: {instr}\n"
-                  f"LANGUAGE REQUIREMENT: Respond ONLY in {language}.\n"
-                  f"PATIENT DATA: {patient_ctx}\n"
-                  f"QUERY: {prompt}\n\n"
-                  f"Important: Deliver a clean, professional response without special markdown symbols.")
+    # Combined user-role instruction for maximum compatibility across all model generations
+    full_query = (f"Role: {instr}\n"
+                  f"LANGUAGE: Respond ONLY in {language}.\n"
+                  f"PATIENT CONTEXT: {patient_ctx}\n"
+                  f"USER QUERY: {prompt}\n\n"
+                  f"Requirement: Provide a professional response. Do not use special markdown symbols.")
 
-    payload = {
-        "contents": [
-            {
-                "role": "user",
-                "parts": [{"text": full_query}]
-            }
-        ]
-    }
+    payload = {"contents": [{"role": "user", "parts": [{"text": full_query}]}]}
+    headers = {"Content-Type": "application/json"}
     
+    # Iterate through every possible version until one succeeds
     for version, model_name in discovery_paths:
         url = f"https://generativelanguage.googleapis.com/{version}/models/{model_name}:generateContent?key={current_key}"
         try:
-            response = requests.post(url, json=payload, timeout=15)
+            # surgical timeout per attempt to keep the overall process moving
+            response = requests.post(url, json=payload, headers=headers, timeout=10)
             if response.status_code == 200:
                 data = response.json()
                 return data['candidates'][0]['content']['parts'][0]['text']
         except:
             continue
-        time.sleep(0.2) 
+        time.sleep(0.1) 
 
     return local_clinical_brain(hb, bp, score, language)
 
@@ -121,14 +123,15 @@ def create_pdf(data, ai_note):
     pdf.cell(0, 10, "Clinical AI Insight:", 0, 1)
     pdf.set_font("Arial", '', 10)
     try:
+        # Sanitize for PDF encoding
         clean_ai = ai_note.encode('ascii', 'ignore').decode('ascii')
     except:
-        clean_ai = "Report generated successfully. Please view digital version for full details."
+        clean_ai = "Assessment generated. Please refer to the app dashboard for full localized details."
     pdf.multi_cell(0, 6, clean_ai)
     return pdf.output(dest='S').encode('latin-1')
 
-# --- UI STYLING & TEXT VISIBILITY ---
-st.set_page_config(page_title="MaternalAI Support", layout="wide", page_icon="🤰")
+# --- UI STYLING & HIGH CONTRAST ---
+st.set_page_config(page_title="MaternalAI Companion", layout="wide", page_icon="🤰")
 
 st.markdown("""
     <style>
@@ -149,10 +152,10 @@ st.markdown("""
     }
 
     .logo-m {
-        background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
-        color: white !important; font-family: 'Times New Roman', serif; font-size: 52px; font-weight: 900;
-        width: 95px; height: 95px; display: flex; align-items: center; 
-        justify-content: center; border-radius: 28px; border: 3px solid white;
+        background: linear-gradient(135deg, #1e1b4b 0%, #4338ca 100%);
+        color: white !important; font-family: 'Playfair Display', serif; font-size: 48px; font-weight: 900;
+        width: 85px; height: 85px; display: flex; align-items: center; 
+        justify-content: center; border-radius: 24px; border: 3px solid white;
         box-shadow: 0 12px 30px rgba(30, 27, 75, 0.4);
     }
     
@@ -166,7 +169,7 @@ st.markdown("""
         background: linear-gradient(135deg, #1e1b4b 0%, #4338ca 100%);
         color: #ffffff !important; border-radius: 20px; font-weight: 700;
         padding: 18px 36px; border: none; box-shadow: 0 6px 20px rgba(67, 56, 202, 0.3);
-        transition: 0.4s ease;
+        transition: 0.3s ease;
     }
     .stButton>button:hover { transform: translateY(-4px); box-shadow: 0 15px 30px rgba(67, 56, 202, 0.5); }
     
@@ -185,7 +188,7 @@ with st.sidebar:
     st.markdown('<div style="display:flex; justify-content:center; margin:30px 0;"><div class="logo-m">M</div></div>', unsafe_allow_html=True)
     lang = st.selectbox("🌐 Choose Language / மொழி / भाषा", ["English", "தமிழ்", "हिन्दी"])
     
-    # Navigation strings are localized
+    # Localized navigation options
     nav_map = {
         "English": ["Assessment", "Weekly AI Tips", "Medication Log", "Relaxation Music", "AI Doctor Chat"],
         "தமிழ்": ["மதிப்பீடு", "வாராந்திர குறிப்புகள்", "மருந்துப் பதிவு", "இசை", "AI மருத்துவர்"],
@@ -198,7 +201,7 @@ with st.sidebar:
 # --- FULL MULTILINGUAL CONTENT MAP ---
 content = {
     "English": {
-        "title": "Maternal Health Dashboard", "vitals": "📝 Clinical Input Parameters",
+        "title": "Maternal Health Dashboard", "vitals": "📝 Clinical Inputs",
         "name": "Full Name", "age": "Age", "hb": "Hemoglobin", "bp": "Systolic BP", 
         "wt": "Weight", "wk": "Week", "btn_run": "Analyze Health",
         "res": "📊 Clinical Results", "btn_ai": "Generate AI Report", "dl": "Download PDF",
@@ -215,22 +218,22 @@ content = {
         "tips_title": "📅 வாராந்திர AI வழிகாட்டி", "btn_tips": "குறிப்புகளைப் புதுப்பிக்கவும்",
         "med_title": "💊 மருந்துப் பதிவு", "med_add": "மருந்தைச் சேர்க்கவும்",
         "music_title": "🎵 இசை பரிந்துரைகள்", "music_btn": "பரிந்துரையைப் பெறுங்கள்",
-        "chat_title": "🤖 சுகாதார AI உதவியாளர்", "chat_btn": "AI-யிடம் கேளுங்கள்"
+        "chat_title": "🤖 சுகாதார AI உதவியாளர்", "chat_btn": "AI உதவியாளரிடம் கேளுங்கள்"
     },
     "हिन्दी": {
         "title": "मातृ स्वास्थ्य डैशबोर्ड", "vitals": "📝 नैदानिक डेटा",
         "name": "पूरा नाम", "age": "आयु", "hb": "हीमोग्लोबिन", "bp": "रक्तचाप", 
         "wt": "वजन", "wk": "सप्ताह", "btn_run": "विश्लेषण करें",
         "res": "📊 परिणाम", "btn_ai": "AI रिपोर्ट तैयार करें", "dl": "PDF डाउनलोड",
-        "tips_title": "📅 साप्ताहिक सुझाव", "btn_tips": "सुझाव अपडेट करें",
+        "tips_title": "📅 साप्ताहिक AI सुझाव", "btn_tips": "सुझाव अपडेट करें",
         "med_title": "💊 दवा लॉग", "med_add": "दवा जोड़ें",
         "music_title": "🎵 संगीत अनुशंसा", "music_btn": "अनुशंसा प्राप्त करें",
-        "chat_title": "🤖 स्वास्थ्य सहायक", "chat_btn": "AI से पूछें"
+        "chat_title": "🤖 स्वास्थ्य सहायक", "chat_btn": "Ask AI"
     }
 }
 c = content[lang]
 
-# Ensure navigation works across languages via index
+# Navigate using index to prevent logic breakage when switching languages
 page_idx = nav_map[lang].index(nav_choice)
 
 # --- PAGE LOGIC ---
@@ -255,8 +258,8 @@ if page_idx == 0: # Assessment
         if st.session_state.risk_score:
             st.metric("Risk Score / அபாய மதிப்பெண்", f"{st.session_state.risk_score}%")
             if st.button(c["btn_ai"], use_container_width=True):
-                with st.spinner("AI analyzing your specific clinical case..."):
-                    res = call_gemini_ai(f"Evaluate: Risk {st.session_state.risk_score}% with vitals {st.session_state.patient_data}", "clinical", lang)
+                with st.spinner("Exhausting all Gemini versions..."):
+                    res = call_gemini_ai(f"Risk {st.session_state.risk_score}% with vitals {st.session_state.patient_data}", "clinical", lang)
                     st.session_state.ai_assessment = res
             if st.session_state.ai_assessment:
                 st.markdown(f"**AI Results:**\n{st.session_state.ai_assessment}")
@@ -270,15 +273,15 @@ elif page_idx == 1: # Weekly AI Tips
     else:
         st.markdown('<div class="main-card">', unsafe_allow_html=True)
         if st.button(c["btn_tips"], use_container_width=True):
-            with st.spinner("AI Generating personalized tips..."):
-                st.session_state.tips = call_gemini_ai(f"Provide tips for week {st.session_state.patient_data['week']}.", "tips", lang)
+            with st.spinner("Personalizing advice..."):
+                st.session_state.tips = call_gemini_ai(f"Guidance for week {st.session_state.patient_data['week']}.", "tips", lang)
         if 'tips' in st.session_state: st.markdown(st.session_state.tips)
 
 elif page_idx == 2: # Medication Log
     st.title(c["med_title"])
     st.markdown(f'<div class="main-card"><h3>{c["med_add"]}</h3>', unsafe_allow_html=True)
-    m_name = st.text_input("Medicine Name / மருந்து பெயர்")
-    m_time = st.time_input("Dosage Time")
+    m_name = st.text_input("Medicine / மருந்து")
+    m_time = st.time_input("Time / நேரம்")
     if st.button("Save Log", use_container_width=True):
         st.session_state.medicines.append({"name": m_name, "time": str(m_time)})
     for m in st.session_state.medicines: st.markdown(f"🔔 **{m['name']}** at {m['time']}")
@@ -294,10 +297,9 @@ elif page_idx == 3: # Relaxation Music
 elif page_idx == 4: # AI Doctor Chat
     st.title(c["chat_title"])
     st.markdown('<div class="main-card">', unsafe_allow_html=True)
-    user_q = st.text_input("Question / கேள்வி")
+    user_q = st.text_input("Consult AI Assistant...")
     if st.button(c["chat_btn"], use_container_width=True):
-        with st.spinner("Assistant is replying..."):
-            st.markdown(f"**AI Doctor:** {call_gemini_ai(user_q, 'chatbot', lang)}")
+        st.markdown(f"**AI Doctor:** {call_gemini_ai(user_q, 'chatbot', lang)}")
 
 st.write("---")
-st.caption("MaternalAI Support v3.0 | Surgical Handshake Mode | Triple Language Core")
+st.caption("MaternalAI Support v3.0 | Exhaustive Discovery Core | Triple Language Sync")
