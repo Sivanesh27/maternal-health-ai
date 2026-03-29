@@ -71,15 +71,13 @@ def call_gemini_ai(prompt, context_type="general", language="English"):
 
     # Priority list including standard and experimental strings
     discovery_paths = [
-        ("v1beta", "gemini-1.5-flash"),
-        ("v1", "gemini-1.5-flash"),
-        ("v1beta", "gemini-1.5-flash-latest"),
-        ("v1beta", "gemini-pro"),
-        ("v1", "gemini-pro"),
-        ("v1", "gemini-1.5-pro"),
-        ("v1beta", "gemini-1.5-pro"),
-        ("v1", "gemini-1.5-flash-8b")
+        ("v1beta", "gemini-2.0-flash"),
+        ("v1beta", "gemini-2.0-flash-lite"),
+        ("v1beta", "gemini-2.5-flash"),
+        ("v1beta", "gemini-2.5-pro"),
+        ("v1beta", "gemini-flash-latest"),
     ]
+
     
     prompts = {
         "clinical": "Senior Maternal Health Doctor. Provide a professional clinical risk assessment.",
