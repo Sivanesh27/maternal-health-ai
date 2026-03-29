@@ -45,7 +45,8 @@ def local_clinical_brain(hb, bp, risk_score, lang, diagnostic_msg=""):
 def call_gemini_ai(prompt, context_type="general", language="English"):
     """
     Exhaustive Discovery Engine: Cycles through every version to bypass 404s.
-    If all return 404, it means the 'Generative Language API' is NOT enabled in the console.
+    If all return 404, it means the 'Generative Language API' is NOT enabled or
+    billing is not properly linked in the Google Cloud Console.
     """
     current_key = get_api_key()
     patient_ctx = st.session_state.get('patient_data', {})
@@ -56,7 +57,7 @@ def call_gemini_ai(prompt, context_type="general", language="English"):
     if not current_key or len(current_key) < 10:
         return local_clinical_brain(hb, bp, score, language, "API Key Missing in Streamlit Secrets")
 
-    # Exhaustive list of standard model IDs
+    # Comprehensive list of standard model IDs across v1 and v1beta
     discovery_paths = [
         ("v1", "gemini-1.5-flash"),
         ("v1", "gemini-1.5-flash-latest"),
@@ -96,10 +97,13 @@ def call_gemini_ai(prompt, context_type="general", language="English"):
                 data = response.json()
                 return data['candidates'][0]['content']['parts'][0]['text']
             else:
+                # Capture specific error codes for better console debugging
                 error_log.append(f"{model_name}({version}): {response.status_code}")
         except Exception:
             error_log.append(f"{model_name}: Connection Fail")
-        time.sleep(0.05) 
+        
+        # Micro-delay to avoid rate limits during discovery
+        time.sleep(0.1) 
 
     diagnostic_msg = " | ".join(error_log)
     return local_clinical_brain(hb, bp, score, language, diagnostic_msg)
@@ -290,4 +294,4 @@ elif nav_idx == 4: # AI Doctor Chat
             st.markdown(f"**AI Doctor:** {call_gemini_ai(user_q, 'chatbot', lang)}")
 
 st.write("---")
-st.caption(f"MaternalAI Support v3.0 | Project: {st.session_state.get('project_id', 'gen-lang-client-0652486419')} | Diagnostic Discovery")
+st.caption(f"MaternalAI Support v3.0 | Project: gen-lang-client-0652486419 | Diagnostic Discovery")
