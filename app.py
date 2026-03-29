@@ -9,6 +9,7 @@ from fpdf import FPDF
 
 # --- 1. CONFIGURATION & PROJECT IDENTITY ---
 # Project ID: gen-lang-client-0652486419
+# Note: Your discovery list shows access to Gemini 2.0 and 2.5
 def get_gemini_key():
     try:
         if st.secrets and "GEMINI_API_KEY" in st.secrets:
@@ -38,10 +39,11 @@ def local_clinical_brain(hb, bp, risk_score, lang, diagnostic_msg=""):
         footer = f"\n\n(Diagnostic Details: {diagnostic_msg})" if diagnostic_msg else "\n\n(Note: Rule-based fallback due to API timeout.)"
         return advice + footer
 
-# --- 2. GEMINI AI CORE (HYPER-DISCOVERY ENGINE) ---
+# --- 2. GEMINI AI CORE (VERIFIED MODELS ENGINE) ---
 def call_gemini_ai(prompt, context_type="general", language="English"):
     """
-    Hyper-Discovery Engine: Cycles through standard, latest, and experimental models.
+    Verified Discovery Engine: Uses the exact model IDs found in your project list.
+    Prioritizes Gemini 2.5 and 2.0 Flash on the v1beta endpoint.
     """
     current_key = get_gemini_key()
     patient_ctx = st.session_state.get('patient_data', {})
@@ -68,16 +70,14 @@ def call_gemini_ai(prompt, context_type="general", language="English"):
 
     payload = {"contents": [{"role": "user", "parts": [{"text": full_query}]}]}
     
-    # Expanded paths to bypass 404s
+    # Discovery paths based on YOUR verified model list
     discovery_paths = [
-        ("v1beta", "gemini-1.5-flash-latest"),
-        ("v1", "gemini-1.5-flash-latest"),
-        ("v1beta", "gemini-2.0-flash-exp"),
-        ("v1", "gemini-1.5-flash"),
-        ("v1beta", "gemini-1.5-flash"),
-        ("v1", "gemini-1.5-pro"),
-        ("v1beta", "gemini-pro"),
-        ("v1", "gemini-1.5-flash-8b")
+        ("v1beta", "gemini-2.5-flash"), # Found in your list
+        ("v1beta", "gemini-2.0-flash"), # Found in your list
+        ("v1beta", "gemini-flash-latest"), # Found in your list
+        ("v1beta", "gemini-2.5-pro"), # Found in your list
+        ("v1beta", "gemini-2.0-flash-lite"), # Found in your list
+        ("v1", "gemini-2.5-flash") # Stable fallback
     ]
     
     error_log = []
@@ -189,7 +189,7 @@ if 'chat_history' not in st.session_state: st.session_state.chat_history = []
 # --- 7. SIDEBAR NAVIGATION ---
 with st.sidebar:
     st.markdown('<div style="display:flex; justify-content:center; margin:30px 0;"><div class="logo-m">M</div></div>', unsafe_allow_html=True)
-    st.markdown('<div style="text-align:center"><span class="gemini-badge">✨ Powered by Gemini AI</span></div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align:center"><span class="gemini-badge">✨ Powered by Gemini 2.5</span></div>', unsafe_allow_html=True)
     
     lang = st.selectbox("🌐 Language / மொழி / भाषा", ["English", "தமிழ்", "हिन्दी"])
     nav_map = {
@@ -333,4 +333,4 @@ elif page_idx == 4: # AI Doctor Chat
     st.markdown('</div>', unsafe_allow_html=True)
 
 st.write("---")
-st.caption("MaternalAI Support v4.0 | Project: gen-lang-client-0652486419 | Triple Language Clinical Hub")
+st.caption("MaternalAI Support v4.0 | Project: gen-lang-client-0652486419 | Gemini 2.5 Core Sync")
