@@ -20,27 +20,28 @@ def get_api_key():
         pass
     return apiKey.strip()
 
-def local_clinical_brain(hb, bp, risk_score, lang):
-    """Deep clinical rule-based fallback if Gemini API is unreachable."""
+def local_clinical_fallback(hb, bp, risk_score, lang):
+    """Rule-based clinical brain used ONLY if Google's servers are completely unreachable."""
     if lang == "தமிழ்":
-        advice = f"மருத்துவ ஆய்வு: உங்கள் அபாய மதிப்பெண் {risk_score}%. "
-        if hb < 11: advice += "ஹீமோகுளோபின் குறைவாக உள்ளது (இரத்த சோகை). இரும்புச்சத்து நிறைந்த உணவுகளை உட்கொள்ளுங்கள். "
-        if bp > 140: advice += "இரத்த அழுத்தம் அதிகமாக உள்ளது. தயவுசெய்து ஓய்வெடுக்கவும்."
-        return advice + "\n\n(குறிப்பு: இது ஒரு தானியங்கி மருத்துவ உதவி.)"
+        advice = f"மருத்துவ ஆய்வு: அபாய மதிப்பெண் {risk_score}%. "
+        if hb < 11: advice += "ஹீமோகுளோபின் குறைவாக உள்ளது. இரும்புச்சத்து உணவுகளை உட்கொள்ளுங்கள். "
+        if bp > 140: advice += "இரத்த அழுத்தம் அதிகம். ஓய்வெடுக்கவும்."
+        return advice + "\n\n(குறிப்பு: இணைப்பு சிக்கல் காரணமாக இது தானியங்கி பதில்.)"
     elif lang == "हिन्दी":
-        advice = f"नैदानिक विश्लेषण: आपका जोखिम स्कोर {risk_score}% है। "
-        if hb < 11: advice += "हीमोग्लोबिन कम है। आयरन युक्त भोजन (पालक, गुड़) लें। "
-        if bp > 140: advice += "रक्तचाप अधिक है। कृपया आराम करें।"
-        return advice + "\n\n(नोट: यह एक स्वचालित नैदानिक सहायता है।)"
+        advice = f"नैदानिक विश्लेषण: जोखिम स्कोर {risk_score}% है। "
+        if hb < 11: advice += "हीमोग्लोबिन कम है। आयरन युक्त भोजन लें। "
+        if bp > 140: advice += "रक्तचाप अधिक है। आराम करें।"
+        return advice + "\n\n(नोट: कनेक्टिविटी समस्या के कारण यह एक स्वचालित प्रतिक्रिया है।)"
     else:
-        advice = f"Clinical Assessment: Your predictive risk is {risk_score}%. "
+        advice = f"Clinical Assessment: Predictive risk is {risk_score}%. "
         if hb < 11: advice += "Action: Increase Iron intake. "
-        if bp > 140: advice += "Action: Monitor BP daily and reduce salt. "
-        return advice + "\n\n(Note: This is a rule-based fallback generated locally due to API timeout.)"
+        if bp > 140: advice += "Action: Monitor BP and reduce salt. "
+        return advice + "\n\n(Note: Automated fallback generated locally due to API timeout.)"
 
 def call_gemini_ai(prompt, context_type="general", language="English"):
     """
-    Universal Handshake Engine: Cycles through v1 and v1beta to bypass 404 errors.
+    Standardized Multi-Endpoint Caller. 
+    Cycles through all possible paths to solve the 404/400 errors.
     """
     current_key = get_api_key()
     patient_ctx = st.session_state.get('patient_data', {})
@@ -49,19 +50,19 @@ def call_gemini_ai(prompt, context_type="general", language="English"):
     score = st.session_state.get('risk_score', 0)
 
     if not current_key or len(current_key) < 10:
-        return local_clinical_brain(hb, bp, score, language)
+        return local_clinical_fallback(hb, bp, score, language)
 
-    # List of possible valid endpoints for Google's different account tiers
+    # All possible authorized paths for Gemini 1.5/Pro
     discovery_paths = [
         ("v1", "gemini-1.5-flash"),
-        ("v1beta", "gemini-1.5-flash"),
-        ("v1", "gemini-1.5-flash-latest"),
-        ("v1beta", "gemini-1.5-flash-latest")
+        ("v1beta", "gemini-1.5-flash-latest"),
+        ("v1", "gemini-pro"),
+        ("v1beta", "gemini-1.5-flash")
     ]
     
     prompts = {
-        "clinical": "Senior Maternal Health Doctor. Provide professional risk assessment and next steps.",
-        "tips": "Provide 3 unique, medical-backed pregnancy tips for this specific week.",
+        "clinical": "Professional Maternal Health Consultant. Provide deep clinical risk assessment.",
+        "tips": "Provide 3 medical-backed pregnancy tips for this week.",
         "music": "Recommend 3 relaxation soundscapes for this pregnancy stage.",
         "chatbot": "Friendly maternal health assistant. Answer queries warmly."
     }
@@ -69,8 +70,8 @@ def call_gemini_ai(prompt, context_type="general", language="English"):
     instr = prompts.get(context_type, "Maternal health assistant.")
     full_query = (f"Instruction: {instr}\n"
                   f"LANGUAGE: You MUST respond ENTIRELY in {language}.\n"
-                  f"PATIENT CONTEXT: {patient_ctx}\n"
-                  f"USER QUERY: {prompt}")
+                  f"CONTEXT: {patient_ctx}\n"
+                  f"REQUEST: {prompt}")
 
     payload = {"contents": [{"role": "user", "parts": [{"text": full_query}]}]}
     
@@ -84,7 +85,7 @@ def call_gemini_ai(prompt, context_type="general", language="English"):
             continue
         time.sleep(0.2) 
 
-    return local_clinical_brain(hb, bp, score, language)
+    return local_clinical_fallback(hb, bp, score, language)
 
 # --- PDF GENERATION ---
 class PDFReport(FPDF):
@@ -106,10 +107,8 @@ def create_pdf(data, ai_note):
     pdf.set_font("Arial", 'B', 12)
     pdf.cell(0, 10, "Clinical AI Insight:", 0, 1)
     pdf.set_font("Arial", '', 10)
-    try:
-        clean_ai = ai_note.encode('ascii', 'ignore').decode('ascii')
-    except:
-        clean_ai = "Assessment complete. See app for details."
+    # Basic sanitize for PDF encoding
+    clean_ai = ai_note.encode('ascii', 'ignore').decode('ascii')
     pdf.multi_cell(0, 6, clean_ai)
     return pdf.output(dest='S').encode('latin-1')
 
@@ -120,13 +119,13 @@ st.markdown("""
     <style>
     .stApp { background-color: #f8fafc; }
     
-    /* UNIVERSAL TEXT VISIBILITY */
+    /* UNIVERSAL TEXT VISIBILITY - Forces all text to be dark slate */
     p, span, label, li, div, h1, h2, h3, h4, h5, h6, .stMarkdown, [data-testid="stMetricLabel"], .stRadio label { 
         color: #0f172a !important; 
         font-weight: 600 !important; 
     }
     
-    /* INPUT FIELD VISIBILITY FIX */
+    /* INPUT FIELD VISIBILITY FIX - White BG, Dark Text */
     input, textarea, [data-baseweb="input"], [data-baseweb="select"], .stNumberInput div {
         background-color: #ffffff !important;
         color: #000000 !important;
@@ -168,12 +167,12 @@ if 'risk_score' not in st.session_state: st.session_state.risk_score = None
 # --- SIDEBAR NAVIGATION ---
 with st.sidebar:
     st.markdown('<div style="display:flex; justify-content:center; margin:30px 0;"><div class="logo-m">M</div></div>', unsafe_allow_html=True)
-    lang = st.selectbox("🌐 Language", ["English", "தமிழ்", "हिन्दी"])
-    nav = st.radio("Menu / மெனு / मेनू", ["Assessment", "Weekly AI Tips", "Medication Log", "Relaxation Music", "AI Doctor Chat"])
+    lang = st.selectbox("🌐 Choose Language / மொழி / भाषा", ["English", "தமிழ்", "हिन्दी"])
+    nav = st.radio("Menu / மெனு / मेनू", ["Assessment", "Weekly Tips", "Medicine Log", "Music", "AI Chat"])
     st.write("---")
     st.success("System Status: Online 🟢")
 
-# --- FULL MULTILINGUAL CONTENT ---
+# --- MULTILINGUAL CONTENT ---
 content = {
     "English": {
         "title": "Maternal Health Dashboard", "vitals": "📝 Clinical Inputs",
@@ -186,7 +185,7 @@ content = {
         "chat_title": "🤖 Health Assistant", "chat_btn": "Ask AI"
     },
     "தமிழ்": {
-        "title": "சுகாதார மேலாண்மை", "vitals": "📝 மருத்துவத் தரவு",
+        "title": "தாய்வழி சுகாதார மேலாண்மை", "vitals": "📝 மருத்துவத் தரவு",
         "name": "முழு பெயர்", "age": "வயது", "hb": "ஹீமோகுளோபின்", "bp": "இரத்த அழுத்தம்", 
         "wt": "எடை", "wk": "வாரம்", "btn_run": "ஆய்வு செய்",
         "res": "📊 முடிவுகள்", "btn_ai": "AI அறிக்கையை உருவாக்கு", "dl": "PDF பதிவிறக்கம்",
@@ -197,7 +196,7 @@ content = {
     },
     "हिन्दी": {
         "title": "स्वास्थ्य डैशबोर्ड", "vitals": "📝 नैदानिक डेटा",
-        "name": "पूरा नाम", "age": "आयु", "hb": "हीमोग्लोबिन", "bp": "रक्तचाप (BP)", 
+        "name": "पूरा नाम", "age": "आयु", "हीमोग्लोबिन": "hb", "bp": "रक्तचाप (BP)", 
         "wt": "वजन", "wk": "सप्ताह", "btn_run": "विश्लेषण करें",
         "res": "📊 परिणाम", "btn_ai": "AI रिपोर्ट तैयार करें", "dl": "PDF डाउनलोड",
         "tips_title": "📅 साप्ताहिक सुझाव", "btn_tips": "सुझाव अपडेट करें",
@@ -214,12 +213,12 @@ if nav == "Assessment":
     col1, col2 = st.columns([1.1, 1], gap="large")
     with col1:
         st.markdown(f'<div class="main-card"><h3>{c["vitals"]}</h3>', unsafe_allow_html=True)
-        name = st.text_input(c["name"], value=st.session_state.patient_data.get('name', ""))
-        age = st.slider(c["age"], 15, 55, st.session_state.patient_data.get('age', 25))
-        hb = st.number_input(c["hb"], 5.0, 16.0, st.session_state.patient_data.get('hb', 11.0))
-        bp = st.number_input(c["bp"], 80, 200, st.session_state.patient_data.get('bp', 120))
-        weight = st.number_input(c["wt"], 30.0, 250.0, st.session_state.patient_data.get('weight', 60.0))
-        week = st.number_input(c["wk"], 1, 42, st.session_state.patient_data.get('week', 12))
+        name = st.text_input(c.get("name", "Name"), value=st.session_state.patient_data.get('name', ""))
+        age = st.slider(c.get("age", "Age"), 15, 55, st.session_state.patient_data.get('age', 25))
+        hb = st.number_input("Hemoglobin / ஹீமோகுளோபின்", 5.0, 16.0, st.session_state.patient_data.get('hb', 11.0))
+        bp = st.number_input("Systolic BP / இரத்த அழுத்தம்", 80, 200, st.session_state.patient_data.get('bp', 120))
+        weight = st.number_input("Weight / எடை", 30.0, 250.0, st.session_state.patient_data.get('weight', 60.0))
+        week = st.number_input("Week / வாரம்", 1, 42, st.session_state.patient_data.get('week', 12))
         if st.button(c["btn_run"], use_container_width=True):
             st.session_state.patient_data = {"name": name, "age": age, "hb": hb, "bp": bp, "weight": weight, "week": week}
             st.session_state.risk_score = 15.0 if hb >= 11 and bp <= 140 else 68.0
@@ -230,44 +229,44 @@ if nav == "Assessment":
             st.metric("Risk Score", f"{st.session_state.risk_score}%")
             if st.button(c["btn_ai"], use_container_width=True):
                 with st.spinner("AI analyzing..."):
-                    st.session_state.ai_assessment = call_gemini_ai(f"Risk {st.session_state.risk_score}% with vitals: {st.session_state.patient_data}", "clinical", lang)
+                    st.session_state.ai_assessment = call_gemini_ai(f"Evaluate risk of {st.session_state.risk_score}% with vitals: {st.session_state.patient_data}", "clinical", lang)
             if st.session_state.ai_assessment:
-                st.markdown(f"**AI Insight:**\n{st.session_state.ai_assessment}")
+                st.markdown(f"**AI:**\n{st.session_state.ai_assessment}")
                 pdf_bytes = create_pdf(st.session_state.patient_data, st.session_state.ai_assessment)
                 st.download_button(c["dl"], pdf_bytes, f"Report_{name}.pdf", "application/pdf")
         else: st.info("Run Assessment first.")
 
-elif nav == "Weekly AI Tips":
+elif nav == "Weekly Tips":
     st.title(c["tips_title"])
     if not st.session_state.patient_data: st.warning("Run Assessment first.")
     else:
         st.markdown('<div class="main-card">', unsafe_allow_html=True)
         if st.button(c["btn_tips"], use_container_width=True):
-            st.session_state.tips = call_gemini_ai(f"Week {st.session_state.patient_data['week']} tips.", "tips", lang)
+            st.session_state.tips = call_gemini_ai(f"Week {st.session_state.patient_data['week']} guidance.", "tips", lang)
         if 'tips' in st.session_state: st.markdown(st.session_state.tips)
 
-elif nav == "Medication Log":
+elif nav == "Medicine Log":
     st.title(c["med_title"])
     st.markdown(f'<div class="main-card"><h3>{c["med_add"]}</h3>', unsafe_allow_html=True)
-    m_name = st.text_input("Medicine Name")
-    m_time = st.time_input("Time")
-    if st.button("Save", use_container_width=True):
+    m_name = st.text_input("Medicine / மருந்து")
+    m_time = st.time_input("Time / நேரம்")
+    if st.button("Save / சேமி", use_container_width=True):
         st.session_state.medicines.append({"name": m_name, "time": str(m_time)})
     for m in st.session_state.medicines: st.markdown(f"🔔 **{m['name']}** at {m['time']}")
 
-elif nav == "Relaxation Music":
+elif nav == "Music":
     st.title(c["music_title"])
     st.markdown('<div class="main-card">', unsafe_allow_html=True)
     if st.button(c["music_btn"], use_container_width=True):
-        st.session_state.music = call_gemini_ai("Suggest music.", "music", lang)
+        st.session_state.music = call_gemini_ai("Suggest music for my current stage.", "music", lang)
     if 'music' in st.session_state: st.markdown(st.session_state.music)
 
-elif nav == "AI Doctor Chat":
+elif nav == "AI Chat":
     st.title(c["chat_title"])
     st.markdown('<div class="main-card">', unsafe_allow_html=True)
-    user_q = st.text_input("Question")
+    user_q = st.text_input("Question / கேள்வி")
     if st.button(c["chat_btn"], use_container_width=True):
-        st.markdown(f"**AI Doctor:** {call_gemini_ai(user_q, 'chatbot', lang)}")
+        st.markdown(f"**AI Assistant:** {call_gemini_ai(user_q, 'chatbot', lang)}")
 
 st.write("---")
-st.caption("MaternalAI Decision Support v3.0 | Universal Language Support | Secure Handshake")
+st.caption("MaternalAI Decision Support v3.0 | Secure AI Handshake | Triple Language Core")
