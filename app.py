@@ -8,14 +8,13 @@ import json
 import os
 from fpdf import FPDF
 
-# --- 1. CONFIGURATION & UTILS ---
-# Ensure GEMINI_API_KEY is saved in Streamlit Cloud 'Secrets'
+# --- 1. CONFIGURATION & PROJECT IDENTITY ---
+# Project ID from your screenshot: gen-lang-client-0652486419
 apiKey = "" 
 
 def get_api_key():
     try:
         if st.secrets and "GEMINI_API_KEY" in st.secrets:
-            # strip() is crucial to remove accidental spaces from copy-pasting
             return str(st.secrets["GEMINI_API_KEY"]).strip()
     except:
         pass
@@ -42,11 +41,11 @@ def local_clinical_brain(hb, bp, risk_score, lang, diagnostic_msg=""):
         footer = f"\n\n(Diagnostic Details: {diagnostic_msg})" if diagnostic_msg else "\n\n(Note: Rule-based fallback due to API timeout.)"
         return advice + footer
 
-# --- 2. AI CORE LOGIC ---
+# --- 2. AI CORE LOGIC (TOTAL HANDSHAKE) ---
 def call_gemini_ai(prompt, context_type="general", language="English"):
     """
-    Exhaustive Discovery Engine: Cycles through every possible authorized model path.
-    Prioritizes Stable v1 to solve 404 errors.
+    Exhaustive Discovery Engine: Cycles through every version to bypass 404s.
+    If all return 404, it means the 'Generative Language API' is NOT enabled in the console.
     """
     current_key = get_api_key()
     patient_ctx = st.session_state.get('patient_data', {})
@@ -55,16 +54,19 @@ def call_gemini_ai(prompt, context_type="general", language="English"):
     score = st.session_state.get('risk_score', 0)
 
     if not current_key or len(current_key) < 10:
-        return local_clinical_brain(hb, bp, score, language, "API Key Missing or Invalid in Secrets")
+        return local_clinical_brain(hb, bp, score, language, "API Key Missing in Streamlit Secrets")
 
-    # Revised priority list to bypass common 404 aliases
+    # Exhaustive list of standard model IDs
     discovery_paths = [
-        ("v1", "gemini-1.5-flash"),        # Standard Stable
-        ("v1", "gemini-1.5-pro"),          # Pro Stable
-        ("v1beta", "gemini-1.5-flash"),    # Beta Flash
-        ("v1", "gemini-pro"),              # Legacy Alias
-        ("v1beta", "gemini-pro"),          # Legacy Beta
-        ("v1", "gemini-1.5-flash-8b"),     # Lightweight variant
+        ("v1", "gemini-1.5-flash"),
+        ("v1", "gemini-1.5-flash-latest"),
+        ("v1beta", "gemini-1.5-flash"),
+        ("v1beta", "gemini-1.5-flash-latest"),
+        ("v1", "gemini-1.5-pro"),
+        ("v1beta", "gemini-1.5-pro"),
+        ("v1", "gemini-pro"),
+        ("v1beta", "gemini-pro"),
+        ("v1", "gemini-1.5-flash-8b")
     ]
     
     prompts = {
@@ -79,7 +81,7 @@ def call_gemini_ai(prompt, context_type="general", language="English"):
                   f"LANGUAGE: Respond ONLY in {language}.\n"
                   f"CONTEXT: {patient_ctx}\n"
                   f"QUERY: {prompt}\n\n"
-                  f"Constraint: Respond clearly in {language}.")
+                  f"Constraint: Respond clearly in {language} only.")
 
     payload = {"contents": [{"role": "user", "parts": [{"text": full_query}]}]}
     headers = {"Content-Type": "application/json"}
@@ -89,17 +91,16 @@ def call_gemini_ai(prompt, context_type="general", language="English"):
     for version, model_name in discovery_paths:
         url = f"https://generativelanguage.googleapis.com/{version}/models/{model_name}:generateContent?key={current_key}"
         try:
-            response = requests.post(url, json=payload, headers=headers, timeout=12)
+            response = requests.post(url, json=payload, headers=headers, timeout=10)
             if response.status_code == 200:
                 data = response.json()
                 return data['candidates'][0]['content']['parts'][0]['text']
             else:
                 error_log.append(f"{model_name}({version}): {response.status_code}")
-        except Exception as e:
-            error_log.append(f"{model_name}: Timeout/Error")
-        time.sleep(0.1) 
+        except Exception:
+            error_log.append(f"{model_name}: Connection Fail")
+        time.sleep(0.05) 
 
-    # Combine errors for diagnostic visibility
     diagnostic_msg = " | ".join(error_log)
     return local_clinical_brain(hb, bp, score, language, diagnostic_msg)
 
@@ -121,7 +122,7 @@ def create_pdf(data, ai_note):
     pdf.multi_cell(0, 10, vitals)
     pdf.ln(5)
     pdf.set_font("Arial", 'B', 12)
-    pdf.cell(0, 10, "AI Clinical Assessment:", 0, 1)
+    pdf.cell(0, 10, "Clinical AI Assessment:", 0, 1)
     pdf.set_font("Arial", '', 10)
     try:
         clean_ai = ai_note.encode('ascii', 'ignore').decode('ascii')
@@ -130,7 +131,7 @@ def create_pdf(data, ai_note):
     pdf.multi_cell(0, 6, clean_ai)
     return pdf.output(dest='S').encode('latin-1')
 
-# --- 4. UI STYLING ---
+# --- 4. UI STYLING & TEXT VISIBILITY ---
 st.set_page_config(page_title="MaternalAI Companion", layout="wide", page_icon="🤰")
 
 st.markdown("""
@@ -289,4 +290,4 @@ elif nav_idx == 4: # AI Doctor Chat
             st.markdown(f"**AI Doctor:** {call_gemini_ai(user_q, 'chatbot', lang)}")
 
 st.write("---")
-st.caption("MaternalAI Support v3.0 | Total Handshake Mode | Diagnostic Discovery")
+st.caption(f"MaternalAI Support v3.0 | Project: {st.session_state.get('project_id', 'gen-lang-client-0652486419')} | Diagnostic Discovery")
