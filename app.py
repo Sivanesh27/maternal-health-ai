@@ -8,7 +8,7 @@ import os
 from fpdf import FPDF
 
 # --- 1. CONFIGURATION & PROJECT IDENTITY ---
-# Ensure GEMINI_API_KEY is saved in your Streamlit Cloud 'Secrets' dashboard.
+# Project ID: gen-lang-client-0652486419
 def get_gemini_key():
     try:
         if st.secrets and "GEMINI_API_KEY" in st.secrets:
@@ -38,11 +38,10 @@ def local_clinical_brain(hb, bp, risk_score, lang, diagnostic_msg=""):
         footer = f"\n\n(Diagnostic Details: {diagnostic_msg})" if diagnostic_msg else "\n\n(Note: Rule-based fallback due to API timeout.)"
         return advice + footer
 
-# --- 2. GEMINI AI CORE (DISCOVERY ENGINE) ---
+# --- 2. GEMINI AI CORE (HYPER-DISCOVERY ENGINE) ---
 def call_gemini_ai(prompt, context_type="general", language="English"):
     """
-    Exhaustive Discovery Engine for Gemini API.
-    Attempts multiple model paths to bypass potential 404 errors.
+    Hyper-Discovery Engine: Cycles through standard, latest, and experimental models.
     """
     current_key = get_gemini_key()
     patient_ctx = st.session_state.get('patient_data', {})
@@ -53,27 +52,27 @@ def call_gemini_ai(prompt, context_type="general", language="English"):
     if not current_key or len(current_key) < 10:
         return local_clinical_brain(hb, bp, score, language, "GEMINI_API_KEY missing in Secrets")
 
-    # Mapping roles for better prompt engineering
     roles = {
-        "clinical": "Senior Maternal Health Doctor. Provide a professional clinical risk assessment and roadmap.",
-        "tips": "Pregnancy wellness expert. Provide 3 specific tips tailored to the current week and vitals.",
+        "clinical": "Senior Maternal Health Doctor. Provide a professional clinical risk assessment.",
+        "tips": "Pregnancy wellness expert. Provide 3 specific tips tailored to the current week.",
         "music": "Prenatal therapist. Recommend 3 relaxation soundscapes for this pregnancy stage.",
-        "chatbot": "Friendly maternal health assistant. Answer queries with empathy and clinical clarity."
+        "chatbot": "Friendly maternal health assistant. Answer queries with empathy."
     }
     
     role_instr = roles.get(context_type, "Maternal health assistant.")
-    
-    # Combined instruction for maximum compatibility across v1/v1beta
-    full_query = (f"System Role: {role_instr}\n"
-                  f"LANGUAGE REQUIREMENT: Respond ONLY in {language}.\n"
-                  f"PATIENT DATA: {patient_ctx}\n"
-                  f"USER QUERY: {prompt}\n\n"
-                  f"Important: Deliver a clean, professional response in {language}. No bolding.")
+    full_query = (f"Role: {role_instr}\n"
+                  f"LANGUAGE: Respond ONLY in {language}.\n"
+                  f"DATA: {patient_ctx}\n"
+                  f"QUERY: {prompt}\n\n"
+                  f"Important: Respond professionally in {language} only.")
 
     payload = {"contents": [{"role": "user", "parts": [{"text": full_query}]}]}
     
-    # List of endpoints to try (solving the 404 issue)
+    # Expanded paths to bypass 404s
     discovery_paths = [
+        ("v1beta", "gemini-1.5-flash-latest"),
+        ("v1", "gemini-1.5-flash-latest"),
+        ("v1beta", "gemini-2.0-flash-exp"),
         ("v1", "gemini-1.5-flash"),
         ("v1beta", "gemini-1.5-flash"),
         ("v1", "gemini-1.5-pro"),
@@ -85,32 +84,32 @@ def call_gemini_ai(prompt, context_type="general", language="English"):
     for version, model_name in discovery_paths:
         url = f"https://generativelanguage.googleapis.com/{version}/models/{model_name}:generateContent?key={current_key}"
         try:
-            response = requests.post(url, json=payload, timeout=15)
+            response = requests.post(url, json=payload, timeout=12)
             if response.status_code == 200:
                 data = response.json()
                 return data['candidates'][0]['content']['parts'][0]['text']
             else:
                 error_log.append(f"{model_name}({version}): {response.status_code}")
         except:
-            error_log.append(f"{model_name}: Connection Fail")
+            error_log.append(f"{model_name}: Fail")
         time.sleep(0.05)
 
     diagnostic_msg = " | ".join(error_log)
     return local_clinical_brain(hb, bp, score, language, diagnostic_msg)
 
-# --- 3. API STATUS CHECK ---
+# --- 3. API STATUS CHECK (VERBOSE ERROR MODE) ---
 def check_gemini_status():
-    """Verify if any Gemini models are visible to the key."""
+    """Verify models and return detailed error if failed."""
     key = get_gemini_key()
     url = f"https://generativelanguage.googleapis.com/v1beta/models?key={key}"
     try:
         res = requests.get(url, timeout=10)
         if res.status_code == 200:
             models = [m['name'].split('/')[-1] for m in res.json().get('models', [])]
-            return True, f"Connected! Models found: {', '.join(models[:3])}"
-        return False, f"API Error {res.status_code}"
+            return True, f"Connected! Found models: {', '.join(models[:3])}"
+        return False, f"HTTP {res.status_code}: {res.text[:150]}"
     except Exception as e:
-        return False, str(e)
+        return False, f"Connection Error: {str(e)}"
 
 # --- 4. PDF GENERATION ---
 class PDFReport(FPDF):
@@ -135,11 +134,11 @@ def create_pdf(data, ai_note):
     try:
         clean_ai = ai_note.encode('ascii', 'ignore').decode('ascii')
     except:
-        clean_ai = "Assessment generated. Please refer to the app dashboard for localized details."
+        clean_ai = "Assessment complete. See application dashboard for localized details."
     pdf.multi_cell(0, 6, clean_ai)
     return pdf.output(dest='S').encode('latin-1')
 
-# --- 5. UI STYLING & TEXT VISIBILITY ---
+# --- 5. UI STYLING ---
 st.set_page_config(page_title="MaternalAI Companion", layout="wide", page_icon="🤰")
 
 st.markdown("""
@@ -192,7 +191,7 @@ with st.sidebar:
     st.markdown('<div style="display:flex; justify-content:center; margin:30px 0;"><div class="logo-m">M</div></div>', unsafe_allow_html=True)
     st.markdown('<div style="text-align:center"><span class="gemini-badge">✨ Powered by Gemini AI</span></div>', unsafe_allow_html=True)
     
-    lang = st.selectbox("🌐 Choose Language / மொழி / भाषा", ["English", "தமிழ்", "हिन्दी"])
+    lang = st.selectbox("🌐 Language / மொழி / भाषा", ["English", "தமிழ்", "हिन्दी"])
     nav_map = {
         "English": ["Assessment", "Weekly AI Tips", "Medication Log", "Relaxation Music", "AI Doctor Chat"],
         "தமிழ்": ["மதிப்பீடு", "வாராந்திர குறிப்புகள்", "மருந்துப் பதிவு", "இசை", "AI மருத்துவர்"],
@@ -202,9 +201,10 @@ with st.sidebar:
     
     st.write("---")
     if st.button("🔍 Check Gemini API Status"):
-        ok, msg = check_gemini_status()
-        if ok: st.success(msg)
-        else: st.error(msg)
+        with st.spinner("Testing connection..."):
+            ok, msg = check_gemini_status()
+            if ok: st.success(msg)
+            else: st.error(f"Handshake Failed: {msg}")
     
     st.write("---")
     st.success("System: Connected 🟢")
@@ -283,18 +283,18 @@ if page_idx == 0: # Assessment
         else: st.info("👆 Run Analysis to see results.")
         st.markdown('</div>', unsafe_allow_html=True)
 
-elif page_idx == 1: # Tips
+elif page_idx == 1: # Weekly AI Tips
     st.title(c["tips_title"])
     if not st.session_state.patient_data: st.warning("Complete Assessment first.")
     else:
         st.markdown('<div class="main-card">', unsafe_allow_html=True)
         if st.button(c["btn_tips"], use_container_width=True):
-            with st.spinner("Gemini AI generating personalized tips..."):
+            with st.spinner("Gemini AI personalizing advice..."):
                 st.session_state.tips = call_gemini_ai(f"Provide tips for week {st.session_state.patient_data['week']}.", "tips", lang)
         if 'tips' in st.session_state: st.markdown(st.session_state.tips)
         st.markdown('</div>', unsafe_allow_html=True)
 
-elif page_idx == 2: # Medication
+elif page_idx == 2: # Medication Log
     st.title(c["med_title"])
     st.markdown(f'<div class="main-card"><h3>{c["med_add"]}</h3>', unsafe_allow_html=True)
     m_name = st.text_input("Name")
@@ -310,7 +310,7 @@ elif page_idx == 2: # Medication
             st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
-elif page_idx == 3: # Music
+elif page_idx == 3: # Relaxation Music
     st.title(c["music_title"])
     st.markdown('<div class="main-card">', unsafe_allow_html=True)
     if st.button(c["music_btn"], use_container_width=True):
@@ -319,7 +319,7 @@ elif page_idx == 3: # Music
     if 'music' in st.session_state: st.markdown(st.session_state.music)
     st.markdown('</div>', unsafe_allow_html=True)
 
-elif page_idx == 4: # Chat
+elif page_idx == 4: # AI Doctor Chat
     st.title(c["chat_title"])
     st.markdown('<div class="main-card">', unsafe_allow_html=True)
     for chat in st.session_state.chat_history:
@@ -333,4 +333,4 @@ elif page_idx == 4: # Chat
     st.markdown('</div>', unsafe_allow_html=True)
 
 st.write("---")
-st.caption("MaternalAI Support v4.0 | Powered by Google Gemini AI | Multi-Language Clinical Hub")
+st.caption("MaternalAI Support v4.0 | Project: gen-lang-client-0652486419 | Triple Language Clinical Hub")
