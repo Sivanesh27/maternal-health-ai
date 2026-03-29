@@ -65,13 +65,12 @@ content = {
         "chat_ph": "Type your health query...",
         "chat_btn": "Ask Assistant",
         "status_connected": "System: Online",
-        "status_check": "🔍 Check Connection Status",
         "sync_success": "✅ Vitals Synchronized.",
         "complete_first": "⚠️ Please complete the Assessment first.",
         "low_risk": "✅ Low Risk — Healthy profile",
         "mod_risk": "⚠️ Moderate Risk — Monitor closely",
         "high_risk": "🚨 High Risk — Consult doctor",
-        "ai_insight_header": "🤖 AI Clinical Insight",
+        "ai_insight_header": "📄 Detailed Clinical Report",
         "powered_by": "Powered by MaternalAI Support",
         "clear_chat": "🗑️ Clear Chat History",
         "save_success": "✅ Saved successfully.",
@@ -106,13 +105,12 @@ content = {
         "chat_ph": "உங்கள் கேள்வியைத் தட்டச்சு செய்க...",
         "chat_btn": "உதவியாளரிடம் கேளுங்கள்",
         "status_connected": "கணினி: இணைக்கப்பட்டுள்ளது",
-        "status_check": "🔍 இணைப்பு நிலையைச் சரிபார்க்கவும்",
         "sync_success": "✅ தரவுகள் ஒத்திசைக்கப்பட்டன.",
         "complete_first": "⚠️ தயவுசெய்து முதலில் மதிப்பீட்டை முடிக்கவும்.",
         "low_risk": "✅ குறைந்த ஆபத்து - ஆரோக்கியமான நிலை",
         "mod_risk": "⚠️ நடுத்தர ஆபத்து - கண்காணிக்கவும்",
         "high_risk": "🚨 அதிக ஆபத்து - மருத்துவரை அணுகவும்",
-        "ai_insight_header": "🤖 AI மருத்துவ ஆய்வு",
+        "ai_insight_header": "📄 விரிவான மருத்துவ அறிக்கை",
         "powered_by": "MaternalAI ஆதரவு மூலம் வழங்கப்படுகிறது",
         "clear_chat": "🗑️ உரையாடலை அழி",
         "save_success": "✅ வெற்றிகரமாக சேமிக்கப்பட்டது.",
@@ -152,7 +150,7 @@ content = {
         "low_risk": "✅ कम जोखिम - स्वस्थ स्थिति",
         "mod_risk": "⚠️ मध्यम जोखिम - बारीकी से निगरानी करें",
         "high_risk": "🚨 उच्च जोखिम - तुरंत डॉक्टर से मिलें",
-        "ai_insight_header": "🤖 AI नैदानिक विश्लेषण",
+        "ai_insight_header": "📄 विस्तृत नैदानिक रिपोर्ट",
         "powered_by": "MaternalAI सपोर्ट द्वारा संचालित",
         "clear_chat": "🗑️ चैट इतिहास साफ़ करें",
         "save_success": "✅ सफलतापूर्वक सहेजा गया।",
@@ -167,13 +165,13 @@ st.markdown("""
     <style>
     .stApp { background-color: #f8fafc; }
     
-    /* LIGHT TEXT FOR DARK SIDEBAR */
+    /* LIGHT TEXT FOR DARK SIDEBAR NAVIGATION */
     [data-testid="stSidebar"] p, [data-testid="stSidebar"] span, [data-testid="stSidebar"] label, [data-testid="stSidebarNavItems"] span {
         color: #f1f5f9 !important;
         font-weight: 500 !important;
     }
     
-    /* BUTTON TEXT COLOR FIX (FOR ALL BUTTON TYPES INCLUDING DOWNLOAD) */
+    /* BUTTON TEXT COLOR FIX (BRIGHT WHITE ON DARK BG) */
     .stButton>button, .stDownloadButton>button {
         background: linear-gradient(135deg, #1e1b4b 0%, #4338ca 100%) !important;
         color: #ffffff !important;
@@ -181,8 +179,8 @@ st.markdown("""
         font-weight: 700 !important;
         border: none !important;
     }
-    /* ENSURE BUTTON TEXTS ARE BRIGHT WHITE */
-    .stButton>button p, .stDownloadButton>button p, .stButton>button span, .stDownloadButton>button span { 
+    .stButton>button p, .stButton>button span, .stButton>button div,
+    .stDownloadButton>button p, .stDownloadButton>button span { 
         color: #ffffff !important; 
     }
 
@@ -200,6 +198,15 @@ st.markdown("""
         background: white; padding: 35px; border-radius: 28px;
         box-shadow: 0 10px 40px rgba(0,0,0,0.06); border: 1px solid #eef2f6;
         margin-bottom: 25px;
+    }
+    .report-view {
+        background: #fdfdfd;
+        padding: 25px;
+        border-radius: 15px;
+        border: 1px solid #e2e8f0;
+        margin-top: 15px;
+        color: #1e293b;
+        font-family: sans-serif;
     }
     [data-testid="stMetricValue"] { color: #1e1b4b !important; font-weight: 800 !important; }
     </style>
@@ -230,7 +237,7 @@ def call_maternal_ai(prompt, context_type="general", language="English"):
                   f"USER QUERY: {prompt}")
 
     payload = {"contents": [{"role": "user", "parts": [{"text": full_query}]}]}
-    # Discovery paths based on user's project list
+    # Discovery paths based on verified list
     discovery_paths = [("v1beta", "gemini-2.5-flash"), ("v1beta", "gemini-2.0-flash"), ("v1", "gemini-1.5-flash")]
     
     for version, model_name in discovery_paths:
@@ -264,7 +271,7 @@ def create_pdf(data, ai_note, lang_name):
     try:
         clean_ai = ai_note.encode('ascii', 'ignore').decode('ascii')
     except:
-        clean_ai = "Report contains non-ASCII characters. Please see digital dashboard for full details."
+        clean_ai = "Assessment contains specialized characters. Please see digital dashboard for full details."
     pdf.multi_cell(0, 6, clean_ai)
     return pdf.output(dest='S').encode('latin-1')
 
@@ -288,7 +295,7 @@ with st.sidebar:
 # --- 7. PAGE LOGIC ---
 if page_idx == 0: # Assessment
     st.title(c["title"])
-    col1, col2 = st.columns([1.1, 1], gap="large")
+    col1, col2 = st.columns([1, 1.2], gap="large")
     with col1:
         st.markdown(f'<div class="main-card"><h3>{c["vitals_header"]}</h3>', unsafe_allow_html=True)
         name = st.text_input(c["name_lbl"], value=st.session_state.patient_data.get('name', ""))
@@ -321,10 +328,16 @@ if page_idx == 0: # Assessment
             if st.button(c["btn_report"], use_container_width=True):
                 with st.spinner("..."):
                     st.session_state.ai_assessment = call_maternal_ai(f"Assessment for {st.session_state.patient_data}", "clinical", lang)
+            
             if st.session_state.ai_assessment:
-                st.markdown(f"**{c['ai_insight_header']}**\n{st.session_state.ai_assessment}")
+                st.markdown(f"#### {c['ai_insight_header']}")
+                # Inline report viewer
+                st.markdown(f'<div class="report-view">{st.session_state.ai_assessment}</div>', unsafe_allow_html=True)
+                
+                # Download option
+                st.write("")
                 pdf = create_pdf(st.session_state.patient_data, st.session_state.ai_assessment, lang)
-                st.download_button(c["dl_btn"], pdf, f"Report_{name}.pdf", "application/pdf")
+                st.download_button(c["dl_btn"], pdf, f"Report_{name}.pdf", "application/pdf", use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
 elif page_idx == 1: # Tips
