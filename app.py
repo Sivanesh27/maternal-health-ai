@@ -423,7 +423,8 @@ elif page_idx == 2:
         for i, m in enumerate(st.session_state.medicines):
             col1, col2 = st.columns([4, 1])
             with col1:
-                st.markdown(f"🔔 **{m['name']}** — {m.get('dose','')} at **{m['time']}** {f'| _{m[\"notes\"]}_' if m.get('notes') else ''}")
+                notes_str = f"| _{m['notes']}_" if m.get('notes') else ''
+                st.markdown(f"🔔 **{m['name']}** — {m.get('dose','')} at **{m['time']}** {notes_str}")
             with col2:
                 if st.button("🗑️", key=f"del_{i}"):
                     st.session_state.medicines.pop(i)
