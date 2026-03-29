@@ -20,11 +20,11 @@ def get_api_key():
         pass
     return apiKey.strip()
 
-def local_clinical_fallback(hb, bp, risk_score, lang):
+def local_clinical_brain(hb, bp, risk_score, lang):
     """Rule-based clinical brain used ONLY if the API handshake fails."""
     if lang == "தமிழ்":
         advice = f"மருத்துவ ஆய்வு: உங்கள் அபாய மதிப்பெண் {risk_score}%. "
-        if hb < 11: advice += "ஹீமோகுளோபின் குறைவாக உள்ளது (இரத்த சோகை). இரும்புச்சத்து உணவுகளை உட்கொள்ளுங்கள். "
+        if hb < 11: advice += "ஹீமோகுளோபின் குறைவாக உள்ளது (இரத்த சோகை). இரும்புச்சத்து நிறைந்த உணவுகளை உட்கொள்ளுங்கள். "
         if bp > 140: advice += "இரத்த அழுத்தம் அதிகமாக உள்ளது. தயவுசெய்து ஓய்வெடுக்கவும்."
         return advice + "\n\n(குறிப்பு: இணைப்பு சிக்கல் காரணமாக இது தானியங்கி மருத்துவ உதவி.)"
     elif lang == "हिन्दी":
@@ -41,7 +41,7 @@ def local_clinical_fallback(hb, bp, risk_score, lang):
 def call_gemini_ai(prompt, context_type="general", language="English"):
     """
     Final Handshake Engine: Prioritizes v1 Stable to resolve 404 errors.
-    Ensures all advice is localized in the selected language.
+    Fixed NameError by ensuring local_clinical_brain is called correctly.
     """
     current_key = get_api_key()
     patient_ctx = st.session_state.get('patient_data', {})
@@ -52,7 +52,7 @@ def call_gemini_ai(prompt, context_type="general", language="English"):
     if not current_key or len(current_key) < 10:
         return local_clinical_brain(hb, bp, score, language)
 
-    # Prioritize v1 Stable to bypass the v1beta 404 errors seen in your console
+    # Prioritize v1 Stable to bypass the v1beta 404 errors
     discovery_paths = [
         ("v1", "gemini-1.5-flash"),
         ("v1beta", "gemini-1.5-flash"),
@@ -171,7 +171,7 @@ with st.sidebar:
     st.markdown('<div style="display:flex; justify-content:center; margin:30px 0;"><div class="logo-m">M</div></div>', unsafe_allow_html=True)
     lang = st.selectbox("🌐 Choose Language / மொழி / भाषा", ["English", "தமிழ்", "हिन्दी"])
     
-    # Navigation strings are localized
+    # Navigation options are localized based on the selector
     nav_options = {
         "English": ["Assessment", "Weekly AI Tips", "Medication Log", "Relaxation Music", "AI Doctor Chat"],
         "தமிழ்": ["மதிப்பீடு", "வாராந்திர குறிப்புகள்", "மருந்துப் பதிவு", "இசை", "AI மருத்துவர்"],
@@ -216,7 +216,7 @@ content = {
 }
 c = content[lang]
 
-# Safe navigation logic
+# Navigation safety index
 page_idx = nav_options[lang].index(nav_choice)
 
 # --- PAGE LOGIC ---
@@ -227,10 +227,10 @@ if page_idx == 0: # Assessment
         st.markdown(f'<div class="main-card"><h3>{c["vitals"]}</h3>', unsafe_allow_html=True)
         name = st.text_input(c["name"], value=st.session_state.patient_data.get('name', ""))
         age = st.slider(c["age"], 15, 55, st.session_state.patient_data.get('age', 25))
-        hb = st.number_input("Hb (g/dL)", 5.0, 16.0, st.session_state.patient_data.get('hb', 11.0))
-        bp = st.number_input("Systolic BP", 80, 200, st.session_state.patient_data.get('bp', 120))
-        weight = st.number_input("Weight (kg)", 30.0, 250.0, st.session_state.patient_data.get('weight', 60.0))
-        week = st.number_input("Pregnancy Week", 1, 42, st.session_state.patient_data.get('week', 12))
+        hb = st.number_input(f"{c['hb']} (g/dL)", 5.0, 16.0, st.session_state.patient_data.get('hb', 11.0))
+        bp = st.number_input(f"{c['bp']} (mmHg)", 80, 200, st.session_state.patient_data.get('bp', 120))
+        weight = st.number_input(c["wt"], 30.0, 250.0, st.session_state.patient_data.get('weight', 60.0))
+        week = st.number_input(c["wk"], 1, 42, st.session_state.patient_data.get('week', 12))
         if st.button(c["btn_run"], use_container_width=True):
             st.session_state.patient_data = {"name": name, "age": age, "hb": hb, "bp": bp, "weight": weight, "week": week}
             st.session_state.risk_score = 15.0 if hb >= 11 and bp <= 140 else 68.0
