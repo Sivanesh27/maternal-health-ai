@@ -1,3 +1,4 @@
+%%writefile app.py
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -179,6 +180,8 @@ st.markdown("""
         font-weight: 700 !important;
         border: none !important;
     }
+    
+    /* ENSURE ALL BUTTON TEXTS INCLUDING DOWNLOAD BUTTON ARE WHITE */
     .stButton>button p, .stButton>button span, .stButton>button div,
     .stDownloadButton>button p, .stDownloadButton>button span { 
         color: #ffffff !important; 
