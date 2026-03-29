@@ -16,6 +16,24 @@ def get_secure_key():
         pass
     return ""
 
+def get_local_fallback(hb, bp, risk_score, lang):
+    """Rule-based medical logic used if the cloud AI is unreachable."""
+    if lang == "தமிழ்":
+        advice = f"மருத்துவ ஆய்வு: உங்கள் அபாய மதிப்பெண் {risk_score}%. "
+        if hb < 11: advice += "ஹீமோகுளோபின் குறைவாக உள்ளது. இரும்புச்சத்து உணவுகளை உட்கொள்ளுங்கள். "
+        if bp > 140: advice += "இரத்த அழுத்தம் அதிகம். ஓய்வெடுக்கவும்."
+        return advice + "\n\n(குறிப்பு: இது ஒரு தானியங்கி மருத்துவ உதவி.)"
+    elif lang == "हिन्दी":
+        advice = f"नैदानिक विश्लेषण: आपका जोखिम स्कोर {risk_score}% है। "
+        if hb < 11: advice += "हीमोग्लोबिन कम है। आयरन युक्त भोजन लें। "
+        if bp > 140: advice += "रक्तचाप अधिक है। आराम करें।"
+        return advice + "\n\n(नोट: यह एक स्वचालित सहायता है।)"
+    else:
+        advice = f"Clinical Assessment: Your predictive risk is {risk_score}%. "
+        if hb < 11: advice += "Action: Increase Iron intake. "
+        if bp > 140: advice += "Action: Monitor BP daily and reduce salt. "
+        return advice + "\n\n(Note: Rule-based fallback generated locally.)"
+
 # --- 2. MULTILINGUAL CONTENT MAP (TOTAL COVERAGE) ---
 content = {
     "English": {
@@ -56,7 +74,8 @@ content = {
         "ai_insight_header": "🤖 AI Clinical Insight",
         "powered_by": "Powered by MaternalAI Support",
         "clear_chat": "🗑️ Clear Chat History",
-        "save_success": "✅ Saved successfully."
+        "save_success": "✅ Saved successfully.",
+        "delete_btn": "Delete"
     },
     "தமிழ்": {
         "title": "MaternalAI சுகாதார மேலாண்மை",
@@ -96,7 +115,8 @@ content = {
         "ai_insight_header": "🤖 AI மருத்துவ ஆய்வு",
         "powered_by": "MaternalAI ஆதரவு மூலம் வழங்கப்படுகிறது",
         "clear_chat": "🗑️ உரையாடலை அழி",
-        "save_success": "✅ வெற்றிகரமாக சேமிக்கப்பட்டது."
+        "save_success": "✅ வெற்றிகரமாக சேமிக்கப்பட்டது.",
+        "delete_btn": "நீக்கு"
     },
     "हिन्दी": {
         "title": "MaternalAI स्वास्थ्य डैशबोर्ड",
@@ -127,7 +147,6 @@ content = {
         "chat_ph": "अपना प्रश्न टाइप करें...",
         "chat_btn": "सहायक से पूछें",
         "status_connected": "सिस्टम: सक्रिय",
-        "status_check": "🔍 कनेक्शन स्थिति जांचें",
         "sync_success": "✅ महत्वपूर्ण डेटा सिंक किया गया।",
         "complete_first": "⚠️ कृपया पहले मूल्यांकन पूरा करें।",
         "low_risk": "✅ कम जोखिम - स्वस्थ स्थिति",
@@ -136,7 +155,8 @@ content = {
         "ai_insight_header": "🤖 AI नैदानिक विश्लेषण",
         "powered_by": "MaternalAI सपोर्ट द्वारा संचालित",
         "clear_chat": "🗑️ चैट इतिहास साफ़ करें",
-        "save_success": "✅ सफलतापूर्वक सहेजा गया।"
+        "save_success": "✅ सफलतापूर्वक सहेजा गया।",
+        "delete_btn": "हटाएं"
     }
 }
 
@@ -148,20 +168,23 @@ st.markdown("""
     .stApp { background-color: #f8fafc; }
     
     /* LIGHT TEXT FOR DARK SIDEBAR */
-    [data-testid="stSidebar"] p, [data-testid="stSidebar"] span, [data-testid="stSidebar"] label {
+    [data-testid="stSidebar"] p, [data-testid="stSidebar"] span, [data-testid="stSidebar"] label, [data-testid="stSidebarNavItems"] span {
         color: #f1f5f9 !important;
         font-weight: 500 !important;
     }
     
-    /* BUTTON TEXT COLOR FIX (BRIGHT WHITE ON DARK) */
-    .stButton>button {
+    /* BUTTON TEXT COLOR FIX (FOR ALL BUTTON TYPES INCLUDING DOWNLOAD) */
+    .stButton>button, .stDownloadButton>button {
         background: linear-gradient(135deg, #1e1b4b 0%, #4338ca 100%) !important;
         color: #ffffff !important;
         border-radius: 14px !important;
         font-weight: 700 !important;
         border: none !important;
     }
-    .stButton>button p { color: #ffffff !important; }
+    /* ENSURE BUTTON TEXTS ARE BRIGHT WHITE */
+    .stButton>button p, .stDownloadButton>button p, .stButton>button span, .stDownloadButton>button span { 
+        color: #ffffff !important; 
+    }
 
     /* DASHBOARD ELEMENTS */
     p, span, label, h1, h2, h3, h4, .stMarkdown { color: #0f172a; }
@@ -187,9 +210,11 @@ def call_maternal_ai(prompt, context_type="general", language="English"):
     current_key = get_secure_key()
     patient_ctx = st.session_state.get('patient_data', {})
     score = st.session_state.get('risk_score', 0)
+    hb = patient_ctx.get('hb', 11.0)
+    bp = patient_ctx.get('bp', 120)
 
     if not current_key or len(current_key) < 10:
-        return f"Error: Connectivity failed. (Language: {language})"
+        return get_local_fallback(hb, bp, score, language)
 
     roles = {
         "clinical": "Senior Maternal Health Doctor. Provide a clinical assessment and roadmap.",
@@ -205,7 +230,7 @@ def call_maternal_ai(prompt, context_type="general", language="English"):
                   f"USER QUERY: {prompt}")
 
     payload = {"contents": [{"role": "user", "parts": [{"text": full_query}]}]}
-    # Verified Discovery paths based on user's project list
+    # Discovery paths based on user's project list
     discovery_paths = [("v1beta", "gemini-2.5-flash"), ("v1beta", "gemini-2.0-flash"), ("v1", "gemini-1.5-flash")]
     
     for version, model_name in discovery_paths:
@@ -215,7 +240,7 @@ def call_maternal_ai(prompt, context_type="general", language="English"):
             if response.status_code == 200:
                 return response.json()['candidates'][0]['content']['parts'][0]['text']
         except: continue
-    return "The system is busy. Please try again in a moment."
+    return get_local_fallback(hb, bp, score, language)
 
 # --- 5. PDF ENGINE ---
 class PDFReport(FPDF):
@@ -289,6 +314,10 @@ if page_idx == 0: # Assessment
             score = st.session_state.risk_score
             color = "#16a34a" if score < 30 else "#dc2626"
             st.markdown(f'<h1 style="color:{color}; font-size:48px;">{score}% {c["risk_lbl"]}</h1>', unsafe_allow_html=True)
+            if score < 30: st.success(c["low_risk"])
+            elif score < 60: st.warning(c["mod_risk"])
+            else: st.error(c["high_risk"])
+
             if st.button(c["btn_report"], use_container_width=True):
                 with st.spinner("..."):
                     st.session_state.ai_assessment = call_maternal_ai(f"Assessment for {st.session_state.patient_data}", "clinical", lang)
@@ -318,7 +347,12 @@ elif page_idx == 2: # Med Log
         st.session_state.medicines.append({"name": m_name, "time": str(m_time)})
         st.success(c["save_success"])
     st.markdown(f"#### {c['med_curr']}")
-    for m in st.session_state.medicines: st.markdown(f"🔔 **{m['name']}** - {m['time']}")
+    for i, m in enumerate(st.session_state.medicines):
+        col1, col2 = st.columns([4, 1])
+        col1.markdown(f"🔔 **{m['name']}** - {m['time']}")
+        if col2.button(c["delete_btn"], key=f"del_{i}"):
+            st.session_state.medicines.pop(i)
+            st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
 elif page_idx == 3: # Music
